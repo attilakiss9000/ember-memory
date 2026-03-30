@@ -1,6 +1,6 @@
 {
   "name": "ember-memory",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Experiential Memory Bridge for AI Relationships — an MCP server that preserves the texture of human-AI conversation across sessions",
   "type": "module",
   "bin": {
