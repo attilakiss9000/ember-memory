@@ -66,5 +66,5 @@ export const DEFAULT_CONFIG: EmberConfig = {
   annotation_mode: "standard",
 };
 
-export const VALID_CONFIG_KEYS = ["annotation_mode"] as const;
+export const VALID_CONFIG_KEYS = ["annotation_mode", "enabled"] as const;
 export type ConfigKey = (typeof VALID_CONFIG_KEYS)[number];

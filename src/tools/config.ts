@@ -5,6 +5,7 @@ import { VALID_CONFIG_KEYS } from "../types/index.js";
 
 const VALID_VALUES: Record<string, string[]> = {
   annotation_mode: ["minimal", "standard"],
+  enabled: ["true", "false"],
 };
 
 export function registerConfigTool(
@@ -19,7 +20,7 @@ export function registerConfigTool(
       key: z
         .string()
         .optional()
-        .describe("Config key to get or set. Valid keys: annotation_mode"),
+        .describe("Config key to get or set. Valid keys: annotation_mode, enabled"),
       value: z
         .string()
         .optional()

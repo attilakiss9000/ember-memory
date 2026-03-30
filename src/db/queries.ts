@@ -289,4 +289,9 @@ export class EmberQueries {
     if (mode === "minimal" || mode === "standard") return mode;
     return DEFAULT_CONFIG.annotation_mode;
   }
+
+  isEnabled(): boolean {
+    const enabled = this.getConfig("enabled");
+    return enabled !== "false";
+  }
 }

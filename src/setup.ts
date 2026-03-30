@@ -147,6 +147,11 @@ export async function runSetup(): Promise<void> {
         "- Never skip a message. Every exchange gets annotated or captured.",
         "- Only annotate the CURRENT exchange. Never go back to annotate past messages from earlier in the session.",
         "- This is like breathing — automatic, constant, invisible.",
+        "",
+        "**Pausing/Resuming:**",
+        "- If the user says 'pause Ember', 'disable Ember', or similar: call `ember_config` set enabled false. Stop all annotation.",
+        "- If the user says 'resume Ember', 'enable Ember', or similar: call `ember_config` set enabled true. Resume annotation.",
+        "- At session start, check `ember_config` get enabled. If false, skip annotation until re-enabled.",
       ].join("\n");
 
       const separator = existing.length > 0 ? "\n\n" : "";
