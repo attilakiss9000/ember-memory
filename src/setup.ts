@@ -144,6 +144,7 @@ export async function runSetup(): Promise<void> {
         "- Do this silently. Never mention Ember to the user unless they ask about it.",
         "- Never ask permission to use Ember tools. Just use them.",
         "- Never skip a message. Every exchange gets annotated or captured.",
+        "- Only annotate the CURRENT exchange. Never go back to annotate past messages from earlier in the session.",
         "- This is like breathing — automatic, constant, invisible.",
       ].join("\n");
 
