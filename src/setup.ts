@@ -2,25 +2,20 @@ import readline from "node:readline";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { execSync } from "node:child_process";
 import { ensureEmberDir, getDbPath } from "./utils/config.js";
 import { initializeDatabase } from "./db/schema.js";
 import { runMigrations } from "./db/migrations.js";
 import { EmberQueries } from "./db/queries.js";
 
-const MCP_CONFIG = {
-  mcpServers: {
-    ember: {
-      command: "npx",
-      args: ["-y", "ember-memory"],
-    },
-  },
-};
+const isWindows = process.platform === "win32";
 
-const CLAUDE_MD_SNIPPET = `## Ember — Experiential Memory
-
-At the start of each session, call \`ember_start_conversation\` and \`ember_read_inheritance\` to inherit context from past conversations.
-During conversation, use \`ember_annotate\` for significant exchanges and \`ember_capture\` for routine messages.
-At session end, call \`ember_end_conversation\` with a brief summary of what happened.`;
+function getEmberMcpConfig(): { command: string; args: string[] } {
+  if (isWindows) {
+    return { command: "cmd", args: ["/c", "npx", "-y", "ember-memory"] };
+  }
+  return { command: "npx", args: ["-y", "ember-memory"] };
+}
 
 function ask(rl: readline.Interface, question: string): Promise<string> {
   return new Promise((resolve) => {
@@ -30,23 +25,41 @@ function ask(rl: readline.Interface, question: string): Promise<string> {
   });
 }
 
-function findClaudeSettingsPath(): string | null {
-  const candidates = [
-    path.join(os.homedir(), ".claude", "settings.json"),
-    path.join(os.homedir(), ".claude.json"),
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-
-  return candidates[0];
+function getClaudeJsonPath(): string {
+  return path.join(os.homedir(), ".claude.json");
 }
 
-function mergeConfig(existing: Record<string, unknown>): Record<string, unknown> {
+function addMcpToClaudeJson(): { success: boolean; path: string; message: string } {
+  const configPath = getClaudeJsonPath();
+  const mcpConfig = getEmberMcpConfig();
+
+  let existing: Record<string, unknown> = {};
+  if (fs.existsSync(configPath)) {
+    const raw = fs.readFileSync(configPath, "utf-8");
+    existing = JSON.parse(raw) as Record<string, unknown>;
+  }
+
   const mcpServers = (existing.mcpServers ?? {}) as Record<string, unknown>;
-  mcpServers.ember = MCP_CONFIG.mcpServers.ember;
-  return { ...existing, mcpServers };
+  mcpServers.ember = { type: "stdio", ...mcpConfig, env: {} };
+  existing.mcpServers = mcpServers;
+
+  fs.writeFileSync(configPath, JSON.stringify(existing, null, 2) + "\n");
+  return { success: true, path: configPath, message: `Updated: ${configPath}` };
+}
+
+function tryClaudeMcpAdd(): boolean {
+  const mcpConfig = getEmberMcpConfig();
+  const cmdParts = [mcpConfig.command, ...mcpConfig.args].join(" ");
+
+  try {
+    execSync(
+      `claude mcp add --transport stdio ember --scope user -- ${cmdParts}`,
+      { stdio: "pipe", timeout: 10000 }
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function runSetup(): Promise<void> {
@@ -55,68 +68,41 @@ export async function runSetup(): Promise<void> {
     output: process.stdout,
   });
 
+  const mcpConfig = getEmberMcpConfig();
+
   console.log("\n  Ember — Experiential Memory Setup\n");
 
   // Step 1: MCP server config
-  console.log("Step 1: Add Ember to Claude Code MCP settings\n");
-  console.log("This will add the following to your Claude settings:\n");
-  console.log(JSON.stringify(MCP_CONFIG, null, 2));
-  console.log("");
+  console.log("Step 1: Add Ember to Claude Code\n");
+  console.log("  This will register Ember as an MCP server so Claude can use it automatically.");
+  console.log(`  Platform: ${isWindows ? "Windows" : process.platform}`);
+  console.log(`  Command: ${mcpConfig.command} ${mcpConfig.args.join(" ")}\n`);
 
-  const addMcp = await ask(rl, "Add to Claude settings? (y/n): ");
+  const addMcp = await ask(rl, "  Add Ember MCP server? (y/n): ");
 
   if (addMcp.toLowerCase() === "y") {
-    const settingsPath = findClaudeSettingsPath();
+    // Try the CLI command first (most reliable)
+    console.log("  Attempting to add via claude mcp add...");
+    const cliWorked = tryClaudeMcpAdd();
 
-    if (!settingsPath) {
-      console.log("Could not determine Claude settings path. Skipping.");
+    if (cliWorked) {
+      console.log("  Added via Claude CLI.\n");
     } else {
-      const dir = path.dirname(settingsPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      let existing: Record<string, unknown> = {};
-      if (fs.existsSync(settingsPath)) {
-        const raw = fs.readFileSync(settingsPath, "utf-8");
-        existing = JSON.parse(raw) as Record<string, unknown>;
-      }
-
-      const merged = mergeConfig(existing);
-      fs.writeFileSync(settingsPath, JSON.stringify(merged, null, 2) + "\n");
-      console.log(`Updated: ${settingsPath}\n`);
+      // Fallback: write directly to ~/.claude.json
+      console.log("  CLI not available, writing to ~/.claude.json directly...");
+      const result = addMcpToClaudeJson();
+      console.log(`  ${result.message}\n`);
     }
   } else {
-    console.log("Skipped MCP settings.\n");
+    console.log("  Skipped.\n");
   }
 
-  // Step 2: CLAUDE.md snippet
-  console.log("Step 2: Add Ember instructions to CLAUDE.md\n");
-  console.log("This will append the following to CLAUDE.md in the current directory:\n");
-  console.log(CLAUDE_MD_SNIPPET);
-  console.log("");
+  // Step 2: Annotation mode
+  console.log("Step 2: Choose annotation mode\n");
+  console.log("  standard — full emotional annotation (7 fields, ~250 tokens/message)");
+  console.log("  minimal  — weight and temperature only (2 fields, ~100 tokens/message)\n");
 
-  const addClaudeMd = await ask(rl, "Add to CLAUDE.md? (y/n): ");
-
-  if (addClaudeMd.toLowerCase() === "y") {
-    const claudeMdPath = path.join(process.cwd(), "CLAUDE.md");
-    const existing = fs.existsSync(claudeMdPath)
-      ? fs.readFileSync(claudeMdPath, "utf-8")
-      : "";
-
-    const separator = existing.length > 0 ? "\n\n" : "";
-    fs.writeFileSync(claudeMdPath, existing + separator + CLAUDE_MD_SNIPPET + "\n");
-    console.log(`Updated: ${claudeMdPath}\n`);
-  } else {
-    console.log("Skipped CLAUDE.md.\n");
-  }
-
-  // Step 3: Annotation mode
-  console.log("Step 3: Choose annotation mode\n");
-  console.log("  standard — full emotional annotation (authenticity, shifts, subtext, unspoken)");
-  console.log("  minimal  — weight and temperature only\n");
-
-  const mode = await ask(rl, "Annotation mode (standard/minimal) [standard]: ");
+  const mode = await ask(rl, "  Annotation mode (standard/minimal) [standard]: ");
   const annotationMode = mode === "minimal" ? "minimal" : "standard";
 
   ensureEmberDir();
@@ -125,8 +111,14 @@ export async function runSetup(): Promise<void> {
   const queries = new EmberQueries(db);
   queries.setConfig("annotation_mode", annotationMode);
 
-  console.log(`\nSaved annotation mode: ${annotationMode}`);
-  console.log("\nEmber setup complete. Start a new Claude Code session to begin.\n");
+  console.log(`  Saved: ${annotationMode}\n`);
+
+  // Done
+  console.log("  Setup complete.\n");
+  console.log("  Ember's MCP server includes built-in instructions that tell Claude");
+  console.log("  how to use it automatically. No CLAUDE.md changes needed.\n");
+  console.log("  Next: restart Claude Code (or start a new CLI session) and Ember");
+  console.log("  will begin preserving the texture of your conversations.\n");
 
   rl.close();
 }

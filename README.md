@@ -18,20 +18,34 @@ One-command setup:
 npx ember-memory --setup
 ```
 
-Or add Ember manually to your MCP configuration (Claude Desktop, Claude Code, or any MCP client):
+Or add manually via the Claude Code CLI:
+
+```bash
+# macOS / Linux
+claude mcp add --transport stdio ember --scope user -- npx -y ember-memory
+
+# Windows
+claude mcp add --transport stdio ember --scope user -- cmd /c npx -y ember-memory
+```
+
+Or add directly to `~/.claude.json`:
 
 ```json
 {
   "mcpServers": {
     "ember": {
+      "type": "stdio",
       "command": "npx",
-      "args": ["-y", "ember-memory"]
+      "args": ["-y", "ember-memory"],
+      "env": {}
     }
   }
 }
 ```
 
-Requires Node.js 18 or later.
+> **Windows note:** Replace `"command": "npx"` with `"command": "cmd"` and `"args": ["/c", "npx", "-y", "ember-memory"]`.
+
+Restart Claude Code after setup. Requires Node.js 18 or later.
 
 ## The Annotation Schema
 
