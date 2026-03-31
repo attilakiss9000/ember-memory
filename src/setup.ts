@@ -47,6 +47,33 @@ function addMcpToClaudeJson(): { success: boolean; path: string; message: string
   return { success: true, path: configPath, message: `Updated: ${configPath}` };
 }
 
+function addEmberPermissions(): void {
+  const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
+
+  let settings: Record<string, unknown> = {};
+  if (fs.existsSync(settingsPath)) {
+    const raw = fs.readFileSync(settingsPath, "utf-8");
+    settings = JSON.parse(raw) as Record<string, unknown>;
+  }
+
+  const permissions = (settings.permissions ?? {}) as Record<string, unknown>;
+  const allow = (permissions.allow ?? []) as string[];
+
+  if (!allow.includes("mcp__ember:*")) {
+    allow.push("mcp__ember:*");
+    permissions.allow = allow;
+    settings.permissions = permissions;
+
+    const dir = path.dirname(settingsPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    console.log("  Added mcp__ember:* to permissions (no prompts).\n");
+  }
+}
+
 function tryClaudeMcpAdd(): boolean {
   const mcpConfig = getEmberMcpConfig();
   const cmdParts = [mcpConfig.command, ...mcpConfig.args].join(" ");
@@ -93,6 +120,9 @@ export async function runSetup(): Promise<void> {
       const result = addMcpToClaudeJson();
       console.log(`  ${result.message}\n`);
     }
+
+    // Add permissions so Ember tools don't prompt
+    addEmberPermissions();
   } else {
     console.log("  Skipped.\n");
   }
